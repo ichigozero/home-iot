@@ -44,6 +44,7 @@ from math import log
 from math import log10
 from math import nan
 from math import pow
+from math import sqrt
 from ustruct import unpack, unpack_from
 
 # BME280 default address
@@ -266,6 +267,53 @@ class BME280:
             altitude = 0.0
 
         return altitude
+
+    @property
+    def heat_index(self):
+        """
+        Calculate heat index given celsius temperature and relative humidity.
+        """
+        def _to_fahrenheit(celsius):
+            return (celsius * 1.8) + 32
+
+        def _to_celsius(fahrenheit):
+            return (fahrenheit - 32) / 1.8
+
+        temperature, _, humidity = self.read_compensated_data()
+        fahrenheit = _to_fahrenheit(temperature)
+
+        heat_index = 0.5 * (
+            fahrenheit
+            + 61.0
+            + ((fahrenheit - 68.0) * 1.2)
+            + (humidity * 0.094)
+        )
+
+        if heat_index > 79:
+            heat_index = (
+                -42.379
+                + 2.04901523 * fahrenheit
+                + 10.14333127 * humidity
+                - 0.22475541 * fahrenheit * humidity
+                - 0.00683783 * pow(fahrenheit, 2)
+                - 0.05481717 * pow(humidity, 2)
+                + 0.00122874 * pow(fahrenheit, 2) * humidity
+                + 0.00085282 * fahrenheit * pow(humidity, 2)
+                - 0.00000199 * pow(fahrenheit, 2) * pow(humidity, 2)
+            )
+
+            if humidity < 13 and 80.0 <= fahrenheit <= 112.0:
+                heat_index -= (
+                    ((13.0 - humidity) * 0.25)
+                    * sqrt((17.0 - abs(fahrenheit - 95.0)) / 17)
+                )
+            elif humidity > 85.0 and 80.0 <= fahrenheit <= 87.0:
+                heat_index += (
+                    ((humidity - 85.0) * 0.1)
+                    * ((87.0 - fahrenheit) * 0.2)
+                )
+
+        return _to_celsius(heat_index)
 
     @property
     def dew_point(self):
