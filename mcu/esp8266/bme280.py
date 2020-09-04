@@ -41,6 +41,8 @@
 import time
 from array import array
 from math import log
+from math import log10
+from math import nan
 from math import pow
 from ustruct import unpack, unpack_from
 
@@ -271,10 +273,24 @@ class BME280:
         Compute the dew point temperature for the current Temperature
         and Humidity measured pair
         """
-        t, _, h = self.read_compensated_data()
-        h = (log(h, 10) - 2) / 0.4343 + (17.62 * t) / (243.12 + t)
+        temperature, _, humidity = self.read_compensated_data()
 
-        return 243.12 * h / (17.62 - h)
+        if humidity < 1 or humidity > 100:
+            return nan
+
+        ratio = 373.15 / (273.15 + temperature)
+
+        # Saturation Vapor Pressure (SVP)
+        svp = -7.90298 * (ratio - 1)
+        svp += 5.02808 * log10(ratio)
+        svp += -1.3816e-7 * (pow(10, (11.344 * (1 - 1 / ratio))) - 1)
+        svp += 8.1328e-3 * (pow(10, (-3.49149 * (ratio - 1))) - 1)
+        svp += log10(1013.246)
+
+        vapor_pressure = pow(10, svp - 3) * humidity
+        vapor_temperature = log(vapor_pressure / 0.61078)
+
+        return (241.88 * vapor_temperature) / (17.558 - vapor_temperature)
 
     @property
     def values(self):
