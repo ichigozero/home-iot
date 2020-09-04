@@ -219,10 +219,7 @@ class BME280:
             pressure = 30000
 
         h = (self.t_fine - 76800.0)
-        h = ((raw_hum - ((self.dig_H4 * 64.0)
-                         + (self.dig_H5 / 16384.0 * h)
-                         )
-              )
+        h = ((raw_hum - ((self.dig_H4 * 64.0) + (self.dig_H5 / 16384.0 * h)))
              * (self.dig_H2
                 / (65536.0
                    * (1.0 + (self.dig_H6
@@ -339,6 +336,7 @@ class BME280:
         vapor_temperature = log(vapor_pressure / 0.61078)
 
         return (241.88 * vapor_temperature) / (17.558 - vapor_temperature)
+
 
     @property
     def values(self):
