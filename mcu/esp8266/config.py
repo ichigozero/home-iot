@@ -1,0 +1,9 @@
+SCL_PIN = 5  # D1
+SDA_PIN = 4  # D2
+LED_PIN = 2 # D4
+DEBUG_PIN = 14  # D5
+
+MQTT_SERVER = '192.168.2.189'
+MQTT_TOPIC = 'home/temp/outside'
+
+LOG_INTERVAL = 60

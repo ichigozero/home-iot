@@ -336,7 +336,6 @@ class BME280:
 
         return (241.88 * vapor_temperature) / (17.558 - vapor_temperature)
 
-
     @property
     def values(self):
         """ Output sensor readings as human readable values """
