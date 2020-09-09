@@ -33,11 +33,12 @@ def connect_wifi():
         print('Could not initialize the network connection')
 
         if is_debug_mode():
-            while True:
-                pass
+            # Start web server for connection manager
+            wifimgr.start()
         else:
-            print('Rebooting...')
-            machine.reset()
+            print('Reconnecting in 1 second...')
+            time.sleep(1)
+            connect_wifi()
 
 
 def get_sensor_readings():
