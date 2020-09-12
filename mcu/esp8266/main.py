@@ -14,13 +14,9 @@ CLIENT_ID = ubinascii.hexlify(machine.unique_id())
 
 
 def run():
-    try:
-        connect_wifi()
-        msg = get_sensor_readings()
-        publish(msg)
-    except Exception as exc:
-        sys.print_exception(exc)
-        show_error()
+    connect_wifi()
+    msg = get_sensor_readings()
+    publish(msg)
 
     if not is_debug_mode():
         deepsleep()
@@ -72,16 +68,6 @@ def publish(msg):
     )
     time.sleep(1)
     client.disconnect()
-
-
-def show_error():
-    led = machine.Pin(config.LED_PIN, machine.Pin.OUT)
-    for _ in range(3):
-        led.on()
-        time.sleep(0.5)
-        led.off()
-        time.sleep(0.5)
-        led.on()
 
 
 def is_debug_mode():
