@@ -336,16 +336,12 @@ class BME280:
 
         return (241.88 * vapor_temperature) / (17.558 - vapor_temperature)
 
-
     @property
     def values(self):
         """ Output sensor readings as human readable values """
         t, p, h = self.read_compensated_data()
 
         return (
-            '{:.2f}C'.format(t),
-            '{:.2f}C'.format(self.heat_index),
-            '{:.2f}C'.format(self.dew_point),
-            '{:.2f}hPa'.format(p/100),
-            '{:.2f}%'.format(h)
+            'T: {:.2f}C HI: {:.2f}C DP: {:.2f}C P: {:.2f}hPa rH: {:.2f}%'
+            .format(t, self.heat_index, self.dew_point, p/100, h)
         )

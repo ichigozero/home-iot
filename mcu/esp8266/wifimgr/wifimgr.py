@@ -93,10 +93,6 @@ def get_connection():
     except OSError as e:
         print('Exception', str(e))
 
-    # start web server for connection manager:
-    if not connected:
-        connected = start()
-
     return wlan_sta if connected else None
 
 
