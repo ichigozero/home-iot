@@ -29,8 +29,9 @@ class SoilSensor:
         elif moisture_value > self._air_value:
             converted_value = 100
         else:
-            delta = moisture_value - self._water_value
-            converted_value = int((delta / self._air_value) * 100)
+            delta = self._air_value - moisture_value
+            divisor = self._air_value - self._water_value
+            converted_value = int((delta / divisor) * 100)
 
         return converted_value
 
