@@ -1,0 +1,15 @@
+ADC_PIN_1 = 36  # SVP
+ADC_PIN_2 = 32  # P32
+SCL_PIN = 22  # P22
+SDA_PIN = 21  # P21
+DEBUG_PIN = 17  # P17
+
+AIR_VALUE = 3500
+WATER_VALUE = 1400
+
+MQTT_SERVER = '192.168.2.189'
+MQTT_TOPIC_TEMP = 'home/temp/plant'
+MQTT_TOPIC_SOIL_1 = 'home/soil/plant1'
+MQTT_TOPIC_SOIL_2 = 'home/soil/plant2'
+
+LOG_INTERVAL = 60
