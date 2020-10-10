@@ -1,6 +1,5 @@
 import json
 import machine
-import sys
 import time
 import ubinascii
 
@@ -124,11 +123,7 @@ def deepsleep():
         .format(config.LOG_INTERVAL)
     )
 
-    rtc = machine.RTC()
-    rtc.irq(trigger=rtc.ALARM0, wake=machine.DEEPSLEEP)
-    rtc.alarm(rtc.ALARM0, config.LOG_INTERVAL * 1000)
-
-    machine.deepsleep()
+    machine.deepsleep(config.LOG_INTERVAL * 1000)
 
 
 run()
