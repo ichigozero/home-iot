@@ -20,8 +20,8 @@
 # SOFTWARE.
 
 import collections
-import datetime
 import math
+import threading
 import time
 
 from gpiozero import MCP3204
@@ -37,72 +37,86 @@ ACCEL_FRAME = int(TARGET_FPS * 0.3)
 LOOP_DELTA = 1./TARGET_FPS
 MAX_32_BIT_INT = 2147483647
 
-adc = [MCP3204(channel=0), MCP3204(channel=1), MCP3204(channel=2)]
 
-xyz_raw_g = [
-    collections.deque(maxlen=TARGET_FPS),
-    collections.deque(maxlen=TARGET_FPS),
-    collections.deque(maxlen=TARGET_FPS)
-]
-xyz_filtered_g = [0, 0, 0]
-xyz_accel = [0, 0, 0]
-
-accel_values = collections.deque(maxlen=TARGET_FPS * 5)
-frame = 0
-
-
-def to_gforce(adc_value):
-    analog_voltage = (adc_value / ADC_RESOLUTION) * REFERENCE_VOLTAGE
-    analog_voltage -= OFFSET_VOLTAGE
-
-    return analog_voltage / VOLTAGE_PER_G
-
-
-def get_composite_acceleration(xyz_accel):
-    return math.sqrt(
-        (xyz_accel[0] ** 2)
-        + (xyz_accel[1] ** 2)
-        + (xyz_accel[2] ** 2)
-    )
-
-
-target_time = time.time()
-
-while True:
-    for i in range(3):
-        g_value = to_gforce(adc[i].raw_value)
-        xyz_raw_g[i].append(g_value)
-
-        offset = sum(xyz_raw_g[i]) / len(xyz_raw_g[i])
-        xyz_filtered_g[i] = xyz_filtered_g[i] * 0.94 + g_value * 0.06
-        xyz_accel[i] = (xyz_filtered_g[i] - offset) * GAL
-
-    accel_values.append(get_composite_acceleration(xyz_accel))
-
-    try:
-        continous_accel = sorted(accel_values)[-ACCEL_FRAME]
-    except IndexError:
-        continous_accel = 0
-
-    if continous_accel > 0:
-        seismic_scale = 2 * math.log10(continous_accel) + 0.94
-    else:
-        seismic_scale = 0
-
-    if frame % (TARGET_FPS / 10) == 0:
-        print(
-            f'{datetime.datetime.now()}'
-            f' scale: {seismic_scale}'
-            f' frame: {frame}'
+class Seismometer:
+    def __init__(self):
+        self._adc = [
+            MCP3204(channel=0),
+            MCP3204(channel=1),
+            MCP3204(channel=2)
+        ]
+        self._frame = 0
+        self._task_running = False
+        self._task_thread = threading.Thread(
+            target=self._calculate_seismic_scale,
+            daemon=True
         )
+        self.xyz_accel = [0, 0, 0]
+        self.seismic_scale = 0
 
-    target_time += LOOP_DELTA
-    sleep_time = target_time - time.time()
+    def start_calculation(self):
+        self._task_running = True
+        self._task_thread.start()
 
-    if sleep_time > 0:
-        time.sleep(sleep_time)
+    def stop_calculation(self):
+        self._task_running = False
+        self._task_thread.join()
 
-    frame += 1
+    def _calculate_seismic_scale(self):
+        xyz_raw_g = [
+            collections.deque(maxlen=TARGET_FPS),
+            collections.deque(maxlen=TARGET_FPS),
+            collections.deque(maxlen=TARGET_FPS)
+        ]
+        xyz_filtered_g = [0, 0, 0]
+        accel_values = collections.deque(maxlen=TARGET_FPS * 5)
 
-    if frame >= MAX_32_BIT_INT:
-        frame = MAX_32_BIT_INT % TARGET_FPS
+        target_time = time.time()
+
+        while self._task_running:
+            for i in range(3):
+                g_value = self._to_gforce(self._adc[i].raw_value)
+                xyz_raw_g[i].append(g_value)
+
+                offset = sum(xyz_raw_g[i]) / len(xyz_raw_g[i])
+                xyz_filtered_g[i] = xyz_filtered_g[i] * 0.94 + g_value * 0.06
+                self.xyz_accel[i] = (xyz_filtered_g[i] - offset) * GAL
+
+            accel_values.append(
+                self._calculate_composite_acceleration(self.xyz_accel))
+
+            try:
+                continous_accel = sorted(accel_values)[-ACCEL_FRAME]
+
+                if continous_accel > 0:
+                    self.seismic_scale = 2 * math.log10(continous_accel) + 0.94
+                else:
+                    self.seismic_scale = 0
+            except IndexError:
+                pass
+
+            target_time += LOOP_DELTA
+            sleep_time = target_time - time.time()
+
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+
+            self._frame += 1
+
+            if self._frame >= MAX_32_BIT_INT:
+                self._frame = MAX_32_BIT_INT % TARGET_FPS
+
+    @classmethod
+    def _to_gforce(cls, adc_value):
+        analog_voltage = (adc_value / ADC_RESOLUTION) * REFERENCE_VOLTAGE
+        analog_voltage -= OFFSET_VOLTAGE
+
+        return analog_voltage / VOLTAGE_PER_G
+
+    @classmethod
+    def _calculate_composite_acceleration(cls, xyz_accel):
+        return math.sqrt(
+            (xyz_accel[0] ** 2)
+            + (xyz_accel[1] ** 2)
+            + (xyz_accel[2] ** 2)
+        )
