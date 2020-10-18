@@ -37,8 +37,25 @@ ACCEL_FRAME = int(TARGET_FPS * 0.3)
 LOOP_DELTA = 1./TARGET_FPS
 MAX_32_BIT_INT = 2147483647
 
+lock = threading.Lock()
 
-class Seismometer:
+
+class Singleton(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            with lock:
+                if cls not in cls._instances:
+                    cls._instances[cls] = (
+                        super(Singleton, cls)
+                        .__call__(*args, **kwargs)
+                    )
+
+        return cls._instances[cls]
+
+
+class Seismometer(metaclass=Singleton):
     def __init__(self):
         self._adc = [
             MCP3204(channel=0),
