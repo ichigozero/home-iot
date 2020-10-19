@@ -79,6 +79,22 @@ class Seismometer(metaclass=Singleton):
         self._task_running = False
         self._task_thread.join()
 
+    def get_user_friendly_formatted_seismic_scale(self):
+        if self.seismic_scale < 4.5:
+            output_scale = str(round(max(0, self.seismic_scale)))
+        elif 4.5 <= self.seismic_scale < 5:
+            output_scale = '5L'
+        elif 5 <= self.seismic_scale < 5.5:
+            output_scale = '5H'
+        elif 5.5 <= self.seismic_scale < 6:
+            output_scale = '6L'
+        elif 6 <= self.seismic_scale < 6.5:
+            output_scale = '6H'
+        else:
+            output_scale = '7'
+        
+        return output_scale
+
     def _calculate_seismic_scale(self):
         xyz_raw_g = [
             collections.deque(maxlen=TARGET_FPS),
