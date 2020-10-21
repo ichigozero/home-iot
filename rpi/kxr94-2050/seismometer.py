@@ -19,14 +19,19 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import atexit
 import collections
 import datetime
+import json
 import logging
 import math
+import sys
 import threading
 import time
+import uuid
 
 import click
+import paho.mqtt.client as mqtt
 from gpiozero import Buzzer
 from gpiozero import LED
 from gpiozero import LEDBoard
@@ -221,6 +226,85 @@ def detect_earthquakes(interval, verbose):
             self.seismic_scale,
             self.frame
         )
+
+    seismometer = Seismometer()
+    seismometer.start_calculation(
+        callback=_callback,
+        callback_interval=interval
+    )
+
+    while True:
+        seismic_scale = seismometer.seismic_scale
+        scale_led.value = SCALE_LED_CHARSETS[
+            seismometer.get_user_friendly_formatted_seismic_scale()]
+
+        if seismometer.ready:
+            if not status_led.is_lit:
+                status_led.on()
+
+            if seismic_scale >= 3.5:
+                if not buzzer.is_active:
+                    buzzer.on()
+            else:
+                buzzer.off()
+
+
+@cmd.command()
+@click.argument('broker')
+@click.argument('topic')
+@click.option('--interval', '-i', default=0.1)
+@click.option('--verbose', '-v', is_flag=True)
+def detect_publish_earthquakes(broker, topic, interval, verbose):
+    if interval < 0.1:
+        raise ValueError('Interval value should be at least 0.1 seconds')
+
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
+
+    buzzer = Buzzer(3)
+    status_led = LED(26)
+    scale_led = LEDBoard(a=18, b=23, c=12, d=19, e=6, f=22, g=17, xdp=16)
+
+    def _on_connect(client, userdata, flags, rc):
+        if rc == 0:
+            logging.info('Connected to broker')
+            client.connected_flag = True
+        else:
+            logging.error('Connection to broker failed')
+
+    client = mqtt.Client('seismometer-{}'.format(uuid.uuid4()))
+    client.on_connect = _on_connect
+    client.connected_flag = False
+    client.connect(broker)
+
+    client.loop_start()
+    retry_count = 0
+
+    while not client.connected_flag:
+        if retry_count < 5:
+            time.sleep(1)
+            retry_count += 1
+        else:
+            logging.error('Maximum retry count has been exceeded')
+            sys.exit()
+
+    def _exit_handler():
+        client.disconnect()
+        client.loop_stop()
+
+    atexit.register(_exit_handler)
+
+    def _callback(self):
+        if self.ready:
+            message = json.dumps({
+                'seismic_scale':  self.seismic_scale,
+                'x_acceleration': self.xyz_accel[0],
+                'y_acceleration': self.xyz_accel[1],
+                'z_acceleration': self.xyz_accel[2],
+            })
+
+            client.publish(topic, message)
+            logging.debug('Published message: %s', message)
 
     seismometer = Seismometer()
     seismometer.start_calculation(
