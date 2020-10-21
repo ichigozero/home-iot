@@ -20,10 +20,16 @@
 # SOFTWARE.
 
 import collections
+import datetime
+import logging
 import math
 import threading
 import time
 
+import click
+from gpiozero import Buzzer
+from gpiozero import LED
+from gpiozero import LEDBoard
 from gpiozero import MCP3204
 
 ADC_RESOLUTION = 4095  # 12-bit
@@ -36,6 +42,19 @@ TARGET_FPS = 200
 ACCEL_FRAME = int(TARGET_FPS * 0.3)
 LOOP_DELTA = 1./TARGET_FPS
 MAX_32_BIT_INT = 2147483647
+
+SCALE_LED_CHARSETS = {
+    '0': (0, 0, 0, 0, 0, 0, 0, 0),
+    '1': (0, 1, 1, 0, 0, 0, 0, 0),
+    '2': (1, 1, 0, 1, 1, 0, 1, 0),
+    '3': (1, 1, 1, 1, 0, 0, 1, 0),
+    '4': (0, 1, 1, 0, 0, 1, 1, 0),
+    '5L': (1, 0, 1, 1, 0, 1, 1, 0),
+    '5H': (1, 0, 1, 1, 0, 1, 1, 1),
+    '6L': (1, 0, 1, 1, 1, 1, 1, 0),
+    '6H': (1, 0, 1, 1, 1, 1, 1, 1),
+    '7': (1, 1, 1, 0, 0, 0, 0, 0),
+}
 
 lock = threading.Lock()
 
@@ -56,28 +75,36 @@ class Singleton(type):
 
 
 class Seismometer(metaclass=Singleton):
-    def __init__(self):
+    def __init__(self, callback=None, callback_interval=0.1):
         self._adc = [
             MCP3204(channel=0),
             MCP3204(channel=1),
             MCP3204(channel=2)
         ]
-        self._frame = 0
+        self._task_thread = None
         self._task_running = False
-        self._task_thread = threading.Thread(
-            target=self._calculate_seismic_scale,
-            daemon=True
-        )
+        self.ready = False
+        self.frame = 0
         self.xyz_accel = [0, 0, 0]
         self.seismic_scale = 0
 
-    def start_calculation(self):
+    def start_calculation(self, callback=None, callback_interval=0.1):
+        self._task_thread = threading.Thread(
+            target=self._calculate_seismic_scale,
+            daemon=True,
+            args=(callback, callback_interval)
+        )
         self._task_running = True
         self._task_thread.start()
 
     def stop_calculation(self):
         self._task_running = False
         self._task_thread.join()
+        self._task_thread = None
+
+        self.frame = 0
+        self.xyz_accel = [0, 0, 0]
+        self.seismic_scale = 0
 
     def get_user_friendly_formatted_seismic_scale(self):
         if self.seismic_scale < 4.5:
@@ -92,17 +119,19 @@ class Seismometer(metaclass=Singleton):
             output_scale = '6H'
         else:
             output_scale = '7'
-        
+
         return output_scale
 
-    def _calculate_seismic_scale(self):
+    def _calculate_seismic_scale(self, callback, callback_interval):
         xyz_raw_g = [
             collections.deque(maxlen=TARGET_FPS),
             collections.deque(maxlen=TARGET_FPS),
             collections.deque(maxlen=TARGET_FPS)
         ]
         xyz_filtered_g = [0, 0, 0]
+
         accel_values = collections.deque(maxlen=TARGET_FPS * 5)
+        scale_reached_non_zero = False
 
         target_time = time.time()
 
@@ -128,16 +157,27 @@ class Seismometer(metaclass=Singleton):
             except IndexError:
                 pass
 
+            if self.frame % int(TARGET_FPS * callback_interval) == 0:
+                callback(self)
+
             target_time += LOOP_DELTA
             sleep_time = target_time - time.time()
 
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
-            self._frame += 1
+            self.frame += 1
 
-            if self._frame >= MAX_32_BIT_INT:
-                self._frame = MAX_32_BIT_INT % TARGET_FPS
+            if self.frame >= MAX_32_BIT_INT:
+                self.frame = MAX_32_BIT_INT % TARGET_FPS
+
+            if not self.ready:
+                if self.seismic_scale > 0:
+                    scale_reached_non_zero = True
+                else:
+                    if scale_reached_non_zero:
+                        self.ready = True
+
 
     @classmethod
     def _to_gforce(cls, adc_value):
@@ -153,3 +193,60 @@ class Seismometer(metaclass=Singleton):
             + (xyz_accel[1] ** 2)
             + (xyz_accel[2] ** 2)
         )
+
+
+@click.group()
+def cmd():
+    pass
+
+
+@cmd.command()
+@click.option('--interval', '-i', default=0.1)
+@click.option('--verbose', '-v', is_flag=True)
+def detect_earthquakes(interval, verbose):
+    if interval < 0.1:
+        raise ValueError('Interval value should be at least 0.1 seconds')
+
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
+
+    buzzer = Buzzer(3)
+    status_led = LED(26)
+    scale_led = LEDBoard(a=18, b=23, c=12, d=19, e=6, f=22, g=17, xdp=16)
+
+    def _callback(self):
+        logging.debug(
+            '%s scale: %.4f frame: %d',
+            datetime.datetime.now(),
+            self.seismic_scale,
+            self.frame
+        )
+
+    seismometer = Seismometer()
+    seismometer.start_calculation(
+        callback=_callback,
+        callback_interval=interval
+    )
+
+    while True:
+        seismic_scale = seismometer.seismic_scale
+        scale_led.value = SCALE_LED_CHARSETS[
+            seismometer.get_user_friendly_formatted_seismic_scale()]
+
+        if seismometer.ready:
+            if not status_led.is_lit:
+                status_led.on()
+
+            if seismic_scale >= 3.5:
+                if not buzzer.is_active:
+                    buzzer.on()
+            else:
+                buzzer.off()
+
+
+def main():
+    cmd()
+
+
+if __name__ == '__main__':
+    main()
