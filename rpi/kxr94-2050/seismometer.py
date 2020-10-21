@@ -215,10 +215,6 @@ def detect_earthquakes(interval, verbose):
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
 
-    buzzer = Buzzer(3)
-    status_led = LED(26)
-    scale_led = LEDBoard(a=18, b=23, c=12, d=19, e=6, f=22, g=17, xdp=16)
-
     def _callback(self):
         logging.debug(
             '%s scale: %.4f frame: %d',
@@ -227,27 +223,7 @@ def detect_earthquakes(interval, verbose):
             self.frame
         )
 
-    seismometer = Seismometer()
-    seismometer.start_calculation(
-        callback=_callback,
-        callback_interval=interval
-    )
-
-    while True:
-        seismic_scale = seismometer.seismic_scale
-        scale_led.value = SCALE_LED_CHARSETS[
-            seismometer.get_user_friendly_formatted_seismic_scale()]
-
-        if seismometer.ready:
-            if not status_led.is_lit:
-                status_led.on()
-
-            if seismic_scale >= 3.5:
-                if not buzzer.is_active:
-                    buzzer.on()
-            else:
-                buzzer.off()
-
+    active_seismometer(_callback, interval)
 
 @cmd.command()
 @click.argument('broker')
@@ -260,10 +236,6 @@ def detect_publish_earthquakes(broker, topic, interval, verbose):
 
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
-
-    buzzer = Buzzer(3)
-    status_led = LED(26)
-    scale_led = LEDBoard(a=18, b=23, c=12, d=19, e=6, f=22, g=17, xdp=16)
 
     def _on_connect(client, userdata, flags, rc):
         if rc == 0:
@@ -306,11 +278,16 @@ def detect_publish_earthquakes(broker, topic, interval, verbose):
             client.publish(topic, message)
             logging.debug('Published message: %s', message)
 
+    active_seismometer(_callback, interval)
+
+
+def active_seismometer(callback, callback_interval):
+    buzzer = Buzzer(3)
+    status_led = LED(26)
+    scale_led = LEDBoard(a=18, b=23, c=12, d=19, e=6, f=22, g=17, xdp=16)
+
     seismometer = Seismometer()
-    seismometer.start_calculation(
-        callback=_callback,
-        callback_interval=interval
-    )
+    seismometer.start_calculation(callback, callback_interval)
 
     while True:
         seismic_scale = seismometer.seismic_scale
