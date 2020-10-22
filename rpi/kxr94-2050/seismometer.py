@@ -136,7 +136,6 @@ class Seismometer(metaclass=Singleton):
         xyz_filtered_g = [0, 0, 0]
 
         accel_values = collections.deque(maxlen=TARGET_FPS * 5)
-        scale_reached_non_zero = False
 
         target_time = time.time()
 
@@ -165,23 +164,20 @@ class Seismometer(metaclass=Singleton):
             if self.frame % int(TARGET_FPS * callback_interval) == 0:
                 callback(self)
 
-            target_time += LOOP_DELTA
-            sleep_time = target_time - time.time()
-
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-
             self.frame += 1
 
             if self.frame >= MAX_32_BIT_INT:
                 self.frame = MAX_32_BIT_INT % TARGET_FPS
 
             if not self.ready:
-                if self.seismic_scale > 0:
-                    scale_reached_non_zero = True
-                else:
-                    if scale_reached_non_zero:
-                        self.ready = True
+                if self.seismic_scale < 0:
+                    self.ready = True
+
+            target_time += LOOP_DELTA
+            sleep_time = target_time - time.time()
+
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
 
     @classmethod
