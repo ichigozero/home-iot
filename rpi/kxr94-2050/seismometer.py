@@ -45,7 +45,7 @@ GAL = 980.665  # cm/s^2
 
 TARGET_FPS = 200
 ACCEL_FRAME = int(TARGET_FPS * 0.3)
-LOOP_DELTA = 1./TARGET_FPS
+LOOP_DELTA = 1.0 / TARGET_FPS
 MAX_32_BIT_INT = 2147483647
 
 SCALE_LED_CHARSETS = {
@@ -140,6 +140,8 @@ class Seismometer(metaclass=Singleton):
         target_time = time.time()
 
         while self._task_running:
+            self.frame += 1
+
             for i in range(3):
                 g_value = self._to_gforce(self._adc[i].raw_value)
                 xyz_raw_g[i].append(g_value)
@@ -163,8 +165,6 @@ class Seismometer(metaclass=Singleton):
 
             if self.frame % int(TARGET_FPS * callback_interval) == 0:
                 callback(self)
-
-            self.frame += 1
 
             if self.frame >= MAX_32_BIT_INT:
                 self.frame = MAX_32_BIT_INT % TARGET_FPS
