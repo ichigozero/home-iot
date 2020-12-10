@@ -37,11 +37,7 @@ from gpiozero import LED
 from gpiozero import LEDBoard
 from gpiozero import MCP3204
 
-ADC_RESOLUTION = 4095  # 12-bit
-REFERENCE_VOLTAGE = 3300  # mV
-VOLTAGE_PER_G = REFERENCE_VOLTAGE / 5  # mV
-OFFSET_VOLTAGE = REFERENCE_VOLTAGE / 2  # mV
-GAL = 980.665  # cm/s^2
+ADC_TO_GAL = 1.13426
 
 TARGET_FPS = 200
 ACCEL_FRAME = int(TARGET_FPS * 0.3)
@@ -128,12 +124,12 @@ class Seismometer(metaclass=Singleton):
         return output_scale
 
     def _calculate_seismic_scale(self, callback, callback_interval):
-        xyz_raw_g = [
+        xyz_adc = [
             collections.deque(maxlen=TARGET_FPS),
             collections.deque(maxlen=TARGET_FPS),
             collections.deque(maxlen=TARGET_FPS)
         ]
-        xyz_filtered_g = [0, 0, 0]
+        xyz_gals = [0, 0, 0]
 
         accel_values = collections.deque(maxlen=TARGET_FPS * 5)
 
@@ -143,12 +139,12 @@ class Seismometer(metaclass=Singleton):
             self.frame += 1
 
             for i in range(3):
-                g_value = self._to_gforce(self._adc[i].raw_value)
-                xyz_raw_g[i].append(g_value)
+                adc_val = self._adc[i].raw_value
+                xyz_adc[i].append(adc_val)
 
-                offset = sum(xyz_raw_g[i]) / len(xyz_raw_g[i])
-                xyz_filtered_g[i] = xyz_filtered_g[i] * 0.94 + g_value * 0.06
-                self.xyz_accel[i] = (xyz_filtered_g[i] - offset) * GAL
+                offset = sum(xyz_adc[i]) / len(xyz_adc[i])
+                xyz_gals[i] = xyz_gals[i] * 0.94 + adc_val * 0.06
+                self.xyz_accel[i] = (xyz_gals[i] - offset) * ADC_TO_GAL
 
             accel_values.append(
                 self._calculate_composite_acceleration(self.xyz_accel))
@@ -178,14 +174,6 @@ class Seismometer(metaclass=Singleton):
 
             if sleep_time > 0:
                 time.sleep(sleep_time)
-
-
-    @classmethod
-    def _to_gforce(cls, adc_value):
-        analog_voltage = (adc_value / ADC_RESOLUTION) * REFERENCE_VOLTAGE
-        analog_voltage -= OFFSET_VOLTAGE
-
-        return analog_voltage / VOLTAGE_PER_G
 
     @classmethod
     def _calculate_composite_acceleration(cls, xyz_accel):
