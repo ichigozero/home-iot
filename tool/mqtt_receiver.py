@@ -43,16 +43,19 @@ def subscribe_mqtt(function):
             logging.debug('Message received: %s', message_received)
 
             decoded_message = json.loads(message_received)
-            data_summary = {
-                'measurement': message.topic,
-                'time': datetime.datetime.utcnow().isoformat()
-            }
-            data_summary.update(
-                function(broker, topic, verbose, decoded_message))
+            measurements = function(
+                broker, topic, verbose, decoded_message, *args, **kwargs)
 
-            logging.debug('Data summary: %s', [data_summary])
-            db_client.write_points([data_summary])
-            logging.debug('Data summary has been written into database')
+            if measurements is not None:
+                data_summary = {
+                    'measurement': message.topic,
+                    'time': datetime.datetime.utcnow().isoformat()
+                }
+                data_summary.update(measurements)
+
+                logging.debug('Data summary: %s', [data_summary])
+                db_client.write_points([data_summary])
+                logging.debug('Data summary has been written into database')
 
         if verbose:
             logging.basicConfig(level=logging.DEBUG)
@@ -87,14 +90,46 @@ def thermometer(broker, topic, verbose, decoded_message):
 @click.argument('broker')
 @click.argument('topic')
 @click.option('--verbose', '-v', is_flag=True)
+@click.option('--all-output', '-a', is_flag=True)
+@click.option('--min-scale', '-m', default=-2.0)
 @subscribe_mqtt
-def seismometer(broker, topic, verbose, decoded_message):
-    return {
+def seismometer(
+        broker,
+        topic,
+        verbose,
+        decoded_message,
+        all_output,
+        min_scale
+):
+    if float(decoded_message.get('seismic_scale')) < min_scale:
+        return None
+
+    measurements = {
         'fields': {
             'seismic_scale': float(decoded_message.get('seismic_scale')),
+        }
+    }
+
+    if all_output:
+        measurements['fields'].update({
             'x_acceleration': float(decoded_message.get('x_acceleration')),
             'y_acceleration': float(decoded_message.get('y_acceleration')),
             'z_acceleration': float(decoded_message.get('z_acceleration')),
+        })
+
+    return measurements
+
+
+@main.command()
+@click.argument('broker')
+@click.argument('topic')
+@click.option('--verbose', '-v', is_flag=True)
+@subscribe_mqtt
+def soil_sensor(broker, topic, verbose, decoded_message):
+    return {
+        'fields': {
+            'moisture_value': int(decoded_message.get('moisture_value')),
+            'moisture_level': int(decoded_message.get('moisture_level')),
         }
     }
 
