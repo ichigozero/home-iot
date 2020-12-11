@@ -76,32 +76,32 @@ class Singleton(type):
 
 
 class Seismometer(metaclass=Singleton):
-    def __init__(self, callback=None, callback_interval=0.1):
+    def __init__(self):
         self._adc = [
             MCP3204(channel=0),
             MCP3204(channel=1),
             MCP3204(channel=2)
         ]
         self._task_thread = None
-        self._task_running = False
+        self._task_finished = None
         self.ready = False
         self.frame = 0
         self.xyz_accel = [0, 0, 0]
         self.seismic_scale = 0
 
     def start_calculation(self, callback=None, callback_interval=0.1):
+        self._task_finished = threading.Event()
         self._task_thread = threading.Thread(
             target=self._calculate_seismic_scale,
-            daemon=True,
             args=(callback, callback_interval)
         )
-        self._task_running = True
         self._task_thread.start()
 
     def stop_calculation(self):
-        self._task_running = False
+        self._task_finished.set()
         self._task_thread.join()
         self._task_thread = None
+        self._task_finished = None
 
         self.frame = 0
         self.xyz_accel = [0, 0, 0]
@@ -130,12 +130,10 @@ class Seismometer(metaclass=Singleton):
             collections.deque(maxlen=TARGET_FPS)
         ]
         xyz_gals = [0, 0, 0]
-
         accel_values = collections.deque(maxlen=TARGET_FPS * 5)
-
         target_time = time.time()
 
-        while self._task_running:
+        while not self._task_finished.is_set():
             self.frame += 1
 
             for i in range(3):
@@ -274,19 +272,27 @@ def active_seismometer(callback, callback_interval):
     seismometer.start_calculation(callback, callback_interval)
 
     while True:
-        seismic_scale = seismometer.seismic_scale
-        scale_led.value = SCALE_LED_CHARSETS[
-            seismometer.get_user_friendly_formatted_seismic_scale()]
+        try:
+            seismic_scale = seismometer.seismic_scale
+            scale_led.value = SCALE_LED_CHARSETS[
+                seismometer.get_user_friendly_formatted_seismic_scale()]
 
-        if seismometer.ready:
-            if not status_led.is_lit:
-                status_led.on()
+            if seismometer.ready:
+                if not status_led.is_lit:
+                    status_led.on()
 
-            if seismic_scale >= 3.5:
-                if not buzzer.is_active:
-                    buzzer.on()
-            else:
-                buzzer.off()
+                if seismic_scale >= 3.5:
+                    if not buzzer.is_active:
+                        buzzer.on()
+                else:
+                    buzzer.off()
+        except KeyboardInterrupt:
+            break
+
+    seismometer.stop_calculation()
+    scale_led.off()
+    status_led.off()
+    buzzer.off()
 
 
 def main():
