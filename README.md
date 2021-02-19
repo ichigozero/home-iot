@@ -1,2 +1,2 @@
-# home-iot
-Home IoT analytics.
+# About
+Collection of home IoT projects.
