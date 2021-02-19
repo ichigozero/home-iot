@@ -10,7 +10,6 @@ time interval. The readings will be sent to MQTT broker.
 - MQTT broker (e.g. mosquitto)
 
 # Wiring
-
 See below diagram for wiring reference.
 
 ![esp32-wiring](/mcu/esp32/diagram/esp32_wiring.jpg)

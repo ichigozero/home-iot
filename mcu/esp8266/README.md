@@ -9,7 +9,6 @@ The readings will be sent to MQTT broker.
 - MQTT broker (e.g. mosquitto)
 
 # Wiring
-
 See below diagram for wiring reference.
 
 ![esp8266-wiring](/mcu/esp8266/diagram/esp8266_wiring.jpg)
