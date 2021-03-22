@@ -3,11 +3,9 @@ package main
 import (
 	"io"
 	"log"
-	"math"
 	"os"
-	"sort"
-	"time"
 
+	"github.com/ichigozero/home-iot/rpi/kxr94-2050/go/internal/seismometer"
 	"gobot.io/x/gobot"
 	"gobot.io/x/gobot/drivers/spi"
 	"gobot.io/x/gobot/platforms/raspi"
@@ -44,114 +42,28 @@ func main() {
 	defer closeLogOutput()
 
 	r := raspi.NewAdaptor()
-	adc := spi.NewMCP3204Driver(r)
+	driver := spi.NewMCP3204Driver(r)
 
-	xyzADC := [3]*ringBuffer{
-		newRingBuffer(targetFPS),
-		newRingBuffer(targetFPS),
-		newRingBuffer(targetFPS),
-	}
-
-	xyzGals := [3]float32{0, 0, 0}
-	xyzAccel := [3]float32{0, 0, 0}
-	accel := newRingBuffer(targetFPS * 5)
-	frame := 0
-	targetTime := time.Now()
-
-	var seismicScale float64
+	seismoData := make(chan seismometer.SeismoData)
 
 	work := func() {
+		go seismometer.CalculateSeismicIntensity(driver, seismoData)
+
 		for {
-			frame++
-
-			for i := 0; i < 3; i++ {
-				result, _ := adc.Read(i)
-				xyzADC[i].append(float32(result))
-
-				adcSum := xyzADC[i].getSum()
-				offset := adcSum / float32(xyzADC[i].size)
-				xyzGals[i] = xyzGals[i]*0.94 + float32(result)*0.06
-				xyzAccel[i] = (xyzGals[i] - offset) * adcToGal
-			}
-
-			accel.append(getCompositeAcceleration(xyzAccel))
-			continuousAccel := accel.getSortedValues()[accelFrame]
-
-			if continuousAccel > 0 {
-				seismicScale = 2*math.Log10(float64(continuousAccel)) + 0.94
-			} else {
-				seismicScale = 0
-			}
-
-			if seismicScale > 0.5 {
-				if frame%(targetFPS/10) == 0 {
-					log.Printf("Scale: %g Frame: %d\n", seismicScale, frame)
+			s := <-seismoData
+			if s.IntensityScale > 0.5 {
+				if s.Frame%20 == 0 {
+					log.Printf("Scale: %g Frame: %d\n", s.IntensityScale, s.Frame)
 				}
 			}
-
-			if frame > max32BitInt {
-				frame = max32BitInt % targetFPS
-			}
-
-			targetTime.Add(time.Millisecond * (loopDelta * 1000))
-			sleepTime := targetTime.Sub(time.Now())
-
-			time.Sleep(sleepTime)
 		}
 	}
 
-	robot := gobot.NewRobot("seismoBot",
+	robot := gobot.NewRobot("SeismoBot",
 		[]gobot.Connection{r},
-		[]gobot.Device{adc},
+		[]gobot.Device{driver},
 		work,
 	)
 
 	robot.Start()
-}
-
-func getCompositeAcceleration(xyzAccel [3]float32) float32 {
-	return float32(math.Sqrt(
-		math.Pow(float64(xyzAccel[0]), 2) +
-			math.Pow(float64(xyzAccel[1]), 2) +
-			math.Pow(float64(xyzAccel[2]), 2),
-	))
-}
-
-type ringBuffer struct {
-	values []float32
-	size   int
-	index  int
-}
-
-func newRingBuffer(size int) *ringBuffer {
-	return &ringBuffer{
-		values: make([]float32, size),
-		size:   size,
-	}
-}
-
-func (r *ringBuffer) append(value float32) {
-	r.values[r.index] = value
-	r.index = (r.index + 1) % r.size
-}
-
-func (r *ringBuffer) getSum() float32 {
-	var sum float32 = 0
-
-	for i := 0; i < r.size; i++ {
-		sum += r.values[i]
-	}
-
-	return sum
-}
-
-func (r *ringBuffer) getSortedValues() []float32 {
-	newValues := make([]float32, r.size)
-	copy(newValues, r.values)
-
-	sort.Slice(newValues, func(i, j int) bool {
-		return newValues[i] > newValues[j]
-	})
-
-	return newValues
 }
